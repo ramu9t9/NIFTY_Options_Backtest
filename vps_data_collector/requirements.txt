@@ -1,0 +1,27 @@
+# NIFTY Data Collection System - Python Dependencies
+# Core dependencies for Angel One API integration and data collection
+
+# Data manipulation and analysis
+pandas
+numpy
+
+# Database connectivity
+SQLAlchemy>=1.4
+
+# HTTP requests and API communication
+requests
+
+# WebSocket support for real-time data
+websocket-client
+
+# Time-based One-Time Password for Angel One authentication
+pyotp
+
+# Date and time handling
+python-dateutil
+
+# Logging and monitoring
+colorlog
+
+# Telegram bot (optional)
+python-telegram-bot>=20
