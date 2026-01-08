@@ -14,6 +14,7 @@ Used by:
 from __future__ import annotations
 
 import csv
+import logging
 import os
 import re
 import threading
@@ -27,6 +28,8 @@ import pandas as pd
 from trade_store import TradeStore
 
 IST = timezone(timedelta(hours=5, minutes=30))
+
+logger = logging.getLogger(__name__)
 
 
 def parse_ts_utc(ts: Any) -> Optional[datetime]:
@@ -90,13 +93,24 @@ THRESHOLDS_DEFAULT = {
 
 
 def calculate_fast_indicators(options_df: pd.DataFrame) -> Dict[str, float]:
+    """
+    Calculate fast indicators from options data.
+    Logs detailed calculations for debugging and understanding.
+    """
     if options_df.empty:
+        logger.info("PATTERN ANALYSIS | No options data available")
         return {}
+
+    logger.info("=" * 60)
+    logger.info("PATTERN ANALYSIS | Calculating indicators")
+    logger.info("  Options ticks: %d", len(options_df))
 
     df = options_df.copy()
     df["option_type"] = df["symbol"].astype(str).apply(lambda x: "CALL" if x.endswith("CE") else "PUT")
     calls = df[df["option_type"] == "CALL"].copy()
     puts = df[df["option_type"] == "PUT"].copy()
+    
+    logger.info("  Calls: %d ticks, Puts: %d ticks", len(calls), len(puts))
 
     metrics: Dict[str, float] = {}
 
@@ -106,14 +120,26 @@ def calculate_fast_indicators(options_df: pd.DataFrame) -> Dict[str, float]:
         first = g.first()["iv"].mean()
         last = g.last()["iv"].mean()
         if pd.notna(first) and pd.notna(last) and float(first) > 0:
-            metrics["call_iv_change_pct"] = ((float(last) - float(first)) / float(first)) * 100.0
+            change_pct = ((float(last) - float(first)) / float(first)) * 100.0
+            metrics["call_iv_change_pct"] = change_pct
+            logger.info("CALL IV CHANGE:")
+            logger.info("  First IV (avg): %.2f%%", float(first))
+            logger.info("  Last IV (avg): %.2f%%", float(last))
+            logger.info("  Change = ((%.2f - %.2f) / %.2f) * 100 = %.2f%%", 
+                       float(last), float(first), float(first), change_pct)
 
     if not puts.empty and "iv" in puts.columns:
         g = puts.groupby("symbol", sort=False)
         first = g.first()["iv"].mean()
         last = g.last()["iv"].mean()
         if pd.notna(first) and pd.notna(last) and float(first) > 0:
-            metrics["put_iv_change_pct"] = ((float(last) - float(first)) / float(first)) * 100.0
+            change_pct = ((float(last) - float(first)) / float(first)) * 100.0
+            metrics["put_iv_change_pct"] = change_pct
+            logger.info("PUT IV CHANGE:")
+            logger.info("  First IV (avg): %.2f%%", float(first))
+            logger.info("  Last IV (avg): %.2f%%", float(last))
+            logger.info("  Change = ((%.2f - %.2f) / %.2f) * 100 = %.2f%%", 
+                       float(last), float(first), float(first), change_pct)
 
     # Volume ratio change
     if not calls.empty and not puts.empty and "volume" in calls.columns:
@@ -126,7 +152,16 @@ def calculate_fast_indicators(options_df: pd.DataFrame) -> Dict[str, float]:
             pc_first = put_vol_first / call_vol_first
             pc_last = put_vol_last / call_vol_first if call_vol_first > 0 else 0.0
             if pc_first > 0:
-                metrics["pc_volume_ratio_change"] = ((pc_last - pc_first) / pc_first) * 100.0
+                change_pct = ((pc_last - pc_first) / pc_first) * 100.0
+                metrics["pc_volume_ratio_change"] = change_pct
+                logger.info("PUT/CALL VOLUME RATIO:")
+                logger.info("  Call Volume: %.0f", call_vol_first)
+                logger.info("  Put Volume First: %.0f", put_vol_first)
+                logger.info("  Put Volume Last: %.0f", put_vol_last)
+                logger.info("  PC Ratio First: %.4f", pc_first)
+                logger.info("  PC Ratio Last: %.4f", pc_last)
+                logger.info("  Change = ((%.4f - %.4f) / %.4f) * 100 = %.2f%%", 
+                           pc_last, pc_first, pc_first, change_pct)
 
     # Delta change
     if not calls.empty and "delta" in calls.columns:
@@ -134,14 +169,24 @@ def calculate_fast_indicators(options_df: pd.DataFrame) -> Dict[str, float]:
         first = g.first()["delta"].mean()
         last = g.last()["delta"].mean()
         if pd.notna(first) and pd.notna(last):
-            metrics["call_delta_change"] = float(last) - float(first)
+            change = float(last) - float(first)
+            metrics["call_delta_change"] = change
+            logger.info("CALL DELTA CHANGE:")
+            logger.info("  First Delta (avg): %.4f", float(first))
+            logger.info("  Last Delta (avg): %.4f", float(last))
+            logger.info("  Change = %.4f - %.4f = %.4f", float(last), float(first), change)
 
     if not puts.empty and "delta" in puts.columns:
         g = puts.groupby("symbol", sort=False)
         first = g.first()["delta"].mean()
         last = g.last()["delta"].mean()
         if pd.notna(first) and pd.notna(last):
-            metrics["put_delta_change"] = float(last) - float(first)
+            change = float(last) - float(first)
+            metrics["put_delta_change"] = change
+            logger.info("PUT DELTA CHANGE:")
+            logger.info("  First Delta (avg): %.4f", float(first))
+            logger.info("  Last Delta (avg): %.4f", float(last))
+            logger.info("  Change = %.4f - %.4f = %.4f", float(last), float(first), change)
 
     # Premium momentum (% change)
     if not calls.empty:
@@ -149,56 +194,128 @@ def calculate_fast_indicators(options_df: pd.DataFrame) -> Dict[str, float]:
         first = g.first()["ltp"].mean()
         last = g.last()["ltp"].mean()
         if pd.notna(first) and pd.notna(last) and float(first) > 0:
-            metrics["call_premium_momentum"] = ((float(last) - float(first)) / float(first)) * 100.0
+            momentum = ((float(last) - float(first)) / float(first)) * 100.0
+            metrics["call_premium_momentum"] = momentum
+            logger.info("CALL PREMIUM MOMENTUM:")
+            logger.info("  First Premium (avg): %.2f", float(first))
+            logger.info("  Last Premium (avg): %.2f", float(last))
+            logger.info("  Momentum = ((%.2f - %.2f) / %.2f) * 100 = %.2f%%", 
+                       float(last), float(first), float(first), momentum)
 
     if not puts.empty:
         g = puts.groupby("symbol", sort=False)
         first = g.first()["ltp"].mean()
         last = g.last()["ltp"].mean()
         if pd.notna(first) and pd.notna(last) and float(first) > 0:
-            metrics["put_premium_momentum"] = ((float(last) - float(first)) / float(first)) * 100.0
+            momentum = ((float(last) - float(first)) / float(first)) * 100.0
+            metrics["put_premium_momentum"] = momentum
+            logger.info("PUT PREMIUM MOMENTUM:")
+            logger.info("  First Premium (avg): %.2f", float(first))
+            logger.info("  Last Premium (avg): %.2f", float(last))
+            logger.info("  Momentum = ((%.2f - %.2f) / %.2f) * 100 = %.2f%%", 
+                       float(last), float(first), float(first), momentum)
 
+    logger.info("INDICATORS CALCULATED: %d metrics", len(metrics))
     return metrics
 
 
 def detect_fast_patterns(metrics: Dict[str, float], thresholds: Dict[str, float]) -> List[Dict[str, Any]]:
+    """
+    Detect patterns from calculated metrics.
+    Logs detailed threshold comparisons and pattern detection.
+    """
     patterns: List[Dict[str, Any]] = []
+    
+    logger.info("-" * 60)
+    logger.info("PATTERN DETECTION | Checking thresholds")
 
     # IV patterns
     if "call_iv_change_pct" in metrics:
         v = metrics["call_iv_change_pct"]
-        if abs(v) > thresholds["iv_change_pct"]:
+        threshold = thresholds["iv_change_pct"]
+        detected = abs(v) > threshold
+        logger.info("CALL IV PATTERN:")
+        logger.info("  Value: %.2f%%, Threshold: %.2f%%", v, threshold)
+        logger.info("  Detected: %s %s", "YES" if detected else "NO", 
+                   f"(BEARISH)" if detected and v > 0 else f"(BULLISH)" if detected else "")
+        if detected:
             patterns.append({"pattern_type": "CALL_IV_CHANGE", "value": v, "direction": "BEARISH" if v > 0 else "BULLISH"})
+            
     if "put_iv_change_pct" in metrics:
         v = metrics["put_iv_change_pct"]
-        if abs(v) > thresholds["iv_change_pct"]:
+        threshold = thresholds["iv_change_pct"]
+        detected = abs(v) > threshold
+        logger.info("PUT IV PATTERN:")
+        logger.info("  Value: %.2f%%, Threshold: %.2f%%", v, threshold)
+        logger.info("  Detected: %s %s", "YES" if detected else "NO",
+                   f"(BULLISH)" if detected and v < 0 else f"(BEARISH)" if detected else "")
+        if detected:
             patterns.append({"pattern_type": "PUT_IV_CHANGE", "value": v, "direction": "BULLISH" if v < 0 else "BEARISH"})
 
     # Volume
     if "pc_volume_ratio_change" in metrics:
         v = metrics["pc_volume_ratio_change"]
-        if abs(v) > thresholds["volume_ratio_change"]:
+        threshold = thresholds["volume_ratio_change"]
+        detected = abs(v) > threshold
+        logger.info("VOLUME RATIO PATTERN:")
+        logger.info("  Value: %.2f%%, Threshold: %.2f%%", v, threshold)
+        logger.info("  Detected: %s %s", "YES" if detected else "NO",
+                   f"(BULLISH)" if detected and v < 0 else f"(BEARISH)" if detected else "")
+        if detected:
             patterns.append({"pattern_type": "PC_VOLUME_RATIO_CHANGE", "value": v, "direction": "BULLISH" if v < 0 else "BEARISH"})
 
     # Delta
     if "call_delta_change" in metrics:
         v = metrics["call_delta_change"]
-        if abs(v) > thresholds["delta_change"]:
+        threshold = thresholds["delta_change"]
+        detected = abs(v) > threshold
+        logger.info("CALL DELTA PATTERN:")
+        logger.info("  Value: %.4f, Threshold: %.4f", v, threshold)
+        logger.info("  Detected: %s %s", "YES" if detected else "NO",
+                   f"(BULLISH)" if detected and v > 0 else f"(BEARISH)" if detected else "")
+        if detected:
             patterns.append({"pattern_type": "CALL_DELTA_CHANGE", "value": v, "direction": "BULLISH" if v > 0 else "BEARISH"})
+            
     if "put_delta_change" in metrics:
         v = metrics["put_delta_change"]
-        if abs(v) > thresholds["delta_change"]:
+        threshold = thresholds["delta_change"]
+        detected = abs(v) > threshold
+        logger.info("PUT DELTA PATTERN:")
+        logger.info("  Value: %.4f, Threshold: %.4f", v, threshold)
+        logger.info("  Detected: %s %s", "YES" if detected else "NO",
+                   f"(BEARISH)" if detected and v < 0 else f"(BULLISH)" if detected else "")
+        if detected:
             patterns.append({"pattern_type": "PUT_DELTA_CHANGE", "value": v, "direction": "BEARISH" if v < 0 else "BULLISH"})
 
     # Premium momentum
     if "call_premium_momentum" in metrics:
         v = metrics["call_premium_momentum"]
-        if abs(v) > thresholds["premium_momentum"]:
+        threshold = thresholds["premium_momentum"]
+        detected = abs(v) > threshold
+        logger.info("CALL PREMIUM PATTERN:")
+        logger.info("  Value: %.2f%%, Threshold: %.2f%%", v, threshold)
+        logger.info("  Detected: %s %s", "YES" if detected else "NO",
+                   f"(BULLISH)" if detected and v > 0 else f"(BEARISH)" if detected else "")
+        if detected:
             patterns.append({"pattern_type": "CALL_PREMIUM_MOMENTUM", "value": v, "direction": "BULLISH" if v > 0 else "BEARISH"})
+            
     if "put_premium_momentum" in metrics:
         v = metrics["put_premium_momentum"]
-        if abs(v) > thresholds["premium_momentum"]:
+        threshold = thresholds["premium_momentum"]
+        detected = abs(v) > threshold
+        logger.info("PUT PREMIUM PATTERN:")
+        logger.info("  Value: %.2f%%, Threshold: %.2f%%", v, threshold)
+        logger.info("  Detected: %s %s", "YES" if detected else "NO",
+                   f"(BEARISH)" if detected and v > 0 else f"(BULLISH)" if detected else "")
+        if detected:
             patterns.append({"pattern_type": "PUT_PREMIUM_MOMENTUM", "value": v, "direction": "BEARISH" if v > 0 else "BULLISH"})
+
+    logger.info("=" * 60)
+    logger.info("PATTERNS DETECTED: %d", len(patterns))
+    if patterns:
+        for i, p in enumerate(patterns, 1):
+            logger.info("  %d. %s: %.4f (%s)", i, p["pattern_type"], p["value"], p["direction"])
+    logger.info("=" * 60)
 
     return patterns
 
@@ -300,20 +417,84 @@ class TrendSignalDetector:
         self.trend_counter = 0
 
     def on_candle(self, candle: Candle) -> Optional[Dict[str, Any]]:
+        """
+        Process a closed candle and detect trend signals.
+        Logs detailed step-by-step logic for debugging and understanding.
+        """
         d = candle.direction
+        
+        # Log candle details
+        logger.info("=" * 60)
+        logger.info("CANDLE CLOSED | Time: %s", candle.ts.isoformat())
+        logger.info("  Open=%.2f, High=%.2f, Low=%.2f, Close=%.2f", 
+                   candle.open, candle.high, candle.low, candle.close)
+        
+        # Calculate and log direction
+        pct_change = ((candle.close - candle.open) / candle.open) * 100.0
+        logger.info("  PctChange = ((Close - Open) / Open) * 100")
+        logger.info("  PctChange = ((%.2f - %.2f) / %.2f) * 100 = %.4f%%", 
+                   candle.close, candle.open, candle.open, pct_change)
+        
+        if pct_change > 0.01:
+            logger.info("  Direction = 1 (UP) [YES]")
+        elif pct_change < -0.01:
+            logger.info("  Direction = -1 (DOWN) [YES]")
+        else:
+            logger.info("  Direction = 0 (NEUTRAL)")
+        
+        # Check for direction change
         if d != self.current_direction or d == 0:
+            logger.info("DIRECTION CHANGED | From %s to %s", self.current_direction, d)
+            logger.info("  Start tracking from: %.2f (candle open)", candle.open)
+            logger.info("  Threshold: %.2f%%", self.movement_threshold_pct)
+            logger.info("  NOT crossed yet [NO]")
+            logger.info("--- End of Candle Cycle ---")
+            logger.info("")  # Blank line 1
+            logger.info("")  # Blank line 2
+            logger.info("")  # Blank line 3
+            logger.info("")  # Blank line 4
+            
             self.current_direction = d
             self.direction_start_price = candle.open
             self.already_signaled = False
             return None
 
         if self.already_signaled or not self.direction_start_price:
+            logger.info("CUMULATIVE MOVE | Already signaled or no start price")
+            logger.info("--- End of Candle Cycle ---")
+            logger.info("")  # Blank line 1
+            logger.info("")  # Blank line 2
+            logger.info("")  # Blank line 3
+            logger.info("")  # Blank line 4
             return None
 
+        # Calculate cumulative move
         cumulative_pct = ((candle.close - self.direction_start_price) / self.direction_start_price) * 100.0
+        logger.info("CUMULATIVE MOVE | Same direction continues")
+        logger.info("  Cumulative = ((Close - Start) / Start) * 100")
+        logger.info("  Cumulative = ((%.2f - %.2f) / %.2f) * 100 = %.4f%%", 
+                   candle.close, self.direction_start_price, self.direction_start_price, cumulative_pct)
+        logger.info("  Threshold = %.2f%%", self.movement_threshold_pct)
+        
+        # Check threshold
         if abs(cumulative_pct) >= self.movement_threshold_pct:
             self.trend_counter += 1
             self.already_signaled = True
+            
+            logger.info("  THRESHOLD CROSSED! [YES]")
+            logger.info("=" * 60)
+            logger.info("SIGNAL GENERATED | Trend #%d", self.trend_counter)
+            logger.info("  Entry Time: %s", candle.ts.isoformat())
+            logger.info("  Entry Price: %.2f", candle.close)
+            logger.info("  Direction: %s", "UP" if d == 1 else "DOWN")
+            logger.info("  Cumulative Move: %.4f%%", cumulative_pct)
+            logger.info("=" * 60)
+            logger.info("--- End of Candle Cycle ---")
+            logger.info("")  # Blank line 1
+            logger.info("")  # Blank line 2
+            logger.info("")  # Blank line 3
+            logger.info("")  # Blank line 4
+            
             return {
                 "trend_number": self.trend_counter,
                 "signal_time": candle.ts,
@@ -322,6 +503,14 @@ class TrendSignalDetector:
                 "cumulative_pct": cumulative_pct,
                 "candle": candle,
             }
+        else:
+            logger.info("  NOT crossed yet [NO]")
+            logger.info("--- End of Candle Cycle ---")
+            logger.info("")  # Blank line 1
+            logger.info("")  # Blank line 2
+            logger.info("")  # Blank line 3
+            logger.info("")  # Blank line 4
+        
         return None
 
 

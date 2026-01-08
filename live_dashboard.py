@@ -1075,45 +1075,42 @@ with ui.tab_panels(tabs, value=tab_active).classes("w-full"):
                     update_log_mode_message()
                     ui.timer(2.0, lambda: update_log_mode_message())
                     
-                    log_box = ui.log(max_lines=300).classes("w-full")
+                    log_box = ui.log(max_lines=300).classes("w-full").style("height: 600px")
             
             # Pattern Analysis Logs
             with ui.tab_panel(log_tab_patterns):
                 with ui.card().classes("w-full"):
                     ui.label("Pattern Analysis Details").classes("font-bold")
-                    ui.label("Shows detailed pattern calculations and why patterns were detected or rejected").classes("text-caption")
-                    pattern_log_box = ui.log(max_lines=200).classes("w-full")
+                    ui.label("Shows candle analysis, direction calculations, and threshold tracking").classes("text-caption")
+                    pattern_log_box = ui.log(max_lines=200).classes("w-full").style("height: 600px")
                     
                     # Add explanation card
                     with ui.expansion("📖 Pattern Analysis Guide", icon="help").classes("w-full mt-4"):
                         ui.markdown("""
 ### Pattern Analysis Explained
 
-The pattern analyzer evaluates the following indicators over a 60-second window:
+Shows the ongoing analysis of each candle:
 
-**Fast Indicators:**
-1. **IV Change** - Implied Volatility change (threshold: ±5%)
-2. **Delta Change** - Option Delta change (threshold: ±0.05)
-3. **Volume Spike** - Volume increase (threshold: 2x average)
-4. **Premium Change** - Premium change (threshold: ±3%)
+**Candle Details:**
+- Open, High, Low, Close prices
+- Percentage change calculation
+- Direction determination (UP/DOWN/NEUTRAL)
 
-**Pattern Detection:**
-- **Bullish**: 3+ indicators show bullish signals → CE entry
-- **Bearish**: 3+ indicators show bearish signals → PE entry
-- **No Pattern**: Less than 3 indicators agree → No trade
+**Trend Tracking:**
+- Start price for cumulative tracking
+- Current cumulative move percentage
+- Threshold comparison (0.11%)
+- Whether threshold has been crossed
 
-**Log Format:**
-- ✅ **Pattern Detected** - Shows which indicators triggered
-- ❌ **Pattern Rejected** - Shows why pattern didn't qualify
-- 📊 **Indicator Values** - Actual values vs thresholds
+This tab shows ALL candle processing, even when no signal is generated.
                         """)
             
             # Signal Generation Logs
             with ui.tab_panel(log_tab_signals):
                 with ui.card().classes("w-full"):
                     ui.label("Signal Generation Logic").classes("font-bold")
-                    ui.label("Shows trend detection and signal generation decisions").classes("text-caption")
-                    signal_log_box = ui.log(max_lines=200).classes("w-full")
+                    ui.label("Shows signals and pattern detection (appears only when threshold is crossed)").classes("text-caption")
+                    signal_log_box = ui.log(max_lines=200).classes("w-full").style("height: 600px")
                     
                     # Add explanation card
                     with ui.expansion("📖 Signal Generation Guide", icon="help").classes("w-full mt-4"):
@@ -1467,6 +1464,7 @@ def refresh_ui() -> None:
                     with open(live_log_path, 'r', encoding='utf-8', errors='ignore') as f:
                         # Read last 200 lines from file
                         file_lines = f.readlines()
+                        # Keep all non-empty lines INCLUDING separator lines (dashes)
                         live_logs = [line.strip() for line in file_lines[-200:] if line.strip()]
                         
                         # Display file logs in All Logs tab
@@ -1474,29 +1472,43 @@ def refresh_ui() -> None:
                         for line in live_logs:
                             log_box.push(line)
                         
-                        # Filter for pattern logs
+                        # Filter for pattern logs - Shows ongoing candle analysis and calculations
                         pattern_log_box.clear()
                         pattern_keywords = [
-                            "pattern", "indicator", "iv", "delta", "volume", "premium", 
-                            "bullish", "bearish", "entry", "exit", "option", "ce", "pe",
-                            "atm", "strike", "greek", "vega", "theta", "gamma"
+                            "candle closed", "direction changed", "direction =", 
+                            "cumulative move", "threshold", "pctchange =", 
+                            "start tracking", "not crossed yet",
+                            "open=", "high=", "low=", "close="
                         ]
+                        include_next_lines = 0
                         for line in live_logs:
                             line_lower = line.lower()
+                            
                             if any(keyword in line_lower for keyword in pattern_keywords):
                                 pattern_log_box.push(line)
+                                include_next_lines = 5
+                            elif include_next_lines > 0:
+                                pattern_log_box.push(line)
+                                include_next_lines -= 1
                         
-                        # Filter for signal logs
+                        # Filter for signal logs - Shows ONLY when signals are generated
                         signal_log_box.clear()
                         signal_keywords = [
-                            "trend", "signal", "candle", "movement", "threshold", 
-                            "up", "down", "detected", "direction", "momentum",
-                            "price", "nifty", "spot", "change", "analysis"
+                            "signal generated", "threshold crossed",
+                            "iv pattern", "delta pattern", "volume ratio pattern", "premium pattern",
+                            "call iv", "put iv", "call delta", "put delta", 
+                            "call premium", "put premium", "patterns detected"
                         ]
+                        include_next_lines = 0
                         for line in live_logs:
                             line_lower = line.lower()
+                            
                             if any(keyword in line_lower for keyword in signal_keywords):
                                 signal_log_box.push(line)
+                                include_next_lines = 5
+                            elif include_next_lines > 0:
+                                signal_log_box.push(line)
+                                include_next_lines -= 1
                 else:
                     # No log file yet - show message (only update once)
                     if log_box._props.get('lines', []) == []:
