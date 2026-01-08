@@ -15,6 +15,31 @@ This is a **live paper trading system** for NIFTY options strategy that uses:
 
 ---
 
+## 🚀 Quick Start
+
+### Live Mode (Real-time Trading)
+```batch
+# Terminal 1: Start data collector
+scripts\start_live_data_collector.bat
+
+# Terminal 2: Start paper trading
+scripts\start_live_paper_trading.bat
+```
+
+### Replay Mode (Historical Testing)
+```batch
+# Terminal 1: Start broadcaster data writer
+scripts\start_broadcaster_writer.bat
+
+# Terminal 2: Start dashboard
+scripts\start_live_dashboard.bat
+# Then open http://localhost:8080
+```
+
+> 📖 **Detailed instructions**: See `scripts/README.md`
+
+---
+
 ## 📁 Project Structure
 
 ### Core Components
