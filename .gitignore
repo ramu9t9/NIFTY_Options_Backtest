@@ -33,7 +33,7 @@ ENV/
 *.swo
 *~
 
-# Project specific
+# Project specific - Data files
 *.log
 *.csv
 *.db
@@ -48,6 +48,13 @@ exports/*.xlsx
 # Keep paper_trading folder structure but ignore CSV outputs
 paper_trading/*.csv
 paper_trading/_tmp_*.csv
+
+# Keep Documents folder but ignore generated analysis files
+Documents/*_analysis.txt
+Documents/*_cleaned.txt
+Documents/new_backtest_trades.csv
+Documents/extra_*.csv
+Documents/corrections_cleaned.txt
 
 # Environment variables
 .env
@@ -67,3 +74,10 @@ logs/
 # Trade charts
 trade_charts/
 
+# Temporary analysis scripts (already removed)
+analyze_original_trades.py
+compare_trades.py
+compare_trades_ist.py
+export_new_backtest.py
+prepare_export.py
+read_corrections.py
