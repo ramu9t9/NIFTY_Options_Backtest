@@ -1,0 +1,74 @@
+{
+  "run_id": "run-20260110-155518-682",
+  "created_at": "2026-01-10T15:56:02.680525Z",
+  "config": {
+    "data": {
+      "provider": "sqlite",
+      "sqlite_path": "G:/Projects/Centralize Data Centre/data/nifty_local.db",
+      "table": "ltp_ticks",
+      "symbol_index": "NIFTY 50",
+      "csv_spot_path": null,
+      "csv_options_path": null
+    },
+    "engine": {
+      "start": "2025-10-01",
+      "end": "2025-10-02",
+      "bar_size": "15s",
+      "tz_display": "Asia/Kolkata",
+      "normalize_to_utc": true,
+      "session_start_ist": "09:15",
+      "session_end_ist": "15:30"
+    },
+    "execution": {
+      "fill_on": "bidask",
+      "fallback_price": "ltp",
+      "slippage_bps": 2.0,
+      "commission_per_contract": 0.0,
+      "fees_per_contract": 0.0,
+      "partial_fills": false
+    },
+    "selector": {
+      "mode": "delta",
+      "expiry_preference": "nearest",
+      "contract_multiplier": 50,
+      "strike_window": {
+        "kind": "count",
+        "value": 5
+      },
+      "target_dte": null,
+      "target_delta": 0.25,
+      "liquidity": {
+        "min_bid": 0.0,
+        "max_spread_pct": 1.0,
+        "min_oi": 0.0,
+        "min_volume": 0.0
+      }
+    },
+    "risk": {
+      "max_contracts": 2,
+      "max_notional": 500000.0,
+      "max_loss_per_trade": 10000.0,
+      "max_loss_per_day": 50000.0,
+      "margin_per_contract": 50000.0
+    },
+    "reporting": {
+      "run_dir_root": "runs",
+      "save_csv": true,
+      "save_plot": true,
+      "save_log": true
+    },
+    "strategy": {
+      "name": "strangle",
+      "params": {
+        "entry_time_ist": "10:00",
+        "size": 1,
+        "max_hold_bars": 240,
+        "take_profit_pct": 20.0,
+        "stop_loss_pct": 20.0
+      }
+    }
+  },
+  "total_trades": 12,
+  "start": "2025-09-30T18:30:00+00:00",
+  "end": "2025-10-01T18:30:00+00:00"
+}

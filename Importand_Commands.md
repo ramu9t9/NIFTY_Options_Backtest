@@ -1,0 +1,1 @@
+py -c "import sqlite3; conn=sqlite3.connect('G:/Projects/Centralize Data Centre/data/nifty_local.db'); c=conn.cursor(); c.execute('SELECT ts, ltp FROM ltp_ticks WHERE symbol = ? ORDER BY ts DESC LIMIT 5', ('NIFTY 50',)); print('Latest NIFTY 50 ticks:'); print('\n'.join('  {}: {}'.format(r[0], r[1]) for r in c.fetchall())); conn.close()"

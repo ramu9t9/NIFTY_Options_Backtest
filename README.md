@@ -1,25 +1,21 @@
-# NIFTY Options Paper Trading System
+# Index Options Backtest Engine
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## 📊 Overview
 
-A comprehensive **paper trading system** for NIFTY options with both **live trading** and **backtesting** capabilities.
+A **modular, production-quality Index Options Backtest Engine** for testing trading strategies on historical NIFTY options data. The engine is designed with clean architecture to allow adding multiple strategies without rewriting core logic.
 
 ### Key Features
 
-- **Live Paper Trading**: Real-time trend detection and pattern analysis
-- **Backtest Engine**: Historical strategy validation on tick data
-- **NiceGUI Dashboard**: Real-time monitoring and trade management
-- **Proven Strategy**: 3-stage approach with documented results
-
-### Strategy Performance
-
-**Backtest Results** (Aug 29, 2025 - Jan 1, 2026):
-- **150 trades** | **52% win rate** | **₹858K profit** | **1.80 profit factor**
-- **97.4% match** with original backtest (111/114 trades)
-- Average hold time: **1.5 minutes**
+- **Modular Architecture**: Pluggable strategy system with registry
+- **SQLite Integration**: Direct support for tick-level historical data
+- **Full Options Chain Simulation**: Realistic contract selection, execution, and mark-to-market
+- **Risk Management**: Built-in position sizing, risk limits, and exposure controls
+- **Production Quality**: Type hints, docstrings, comprehensive unit tests
+- **NiceGUI Dashboard**: Interactive web UI for running backtests and comparing results
+- **CLI Interface**: Command-line runner with config file support
 
 ---
 
@@ -29,29 +25,67 @@ A comprehensive **paper trading system** for NIFTY options with both **live trad
 
 ```bash
 # Python 3.11+
+pip install -r requirements.txt
+
+# Or for dashboard only (lighter install)
 pip install -r requirements_dashboard.txt
 ```
 
-### Backtest Mode (Recommended First Step)
+### Database Setup
+
+The engine expects a SQLite database at:
+```
+G:\Projects\Centralize Data Centre\data\nifty_local.db
+```
+
+The database should contain a `ltp_ticks` table with 5-second tick data for:
+- NIFTY 50 index (symbol: `NIFTY 50`)
+- Options contracts (symbols like `NIFTY25116CE25000`)
+- Futures contracts (symbols like `NIFTY25JANFUT`)
+
+### Run a Backtest
+
+#### Via NiceGUI Dashboard (Recommended)
 
 ```bash
-# Run backtest on historical data
-python test_backtest_engine.py
+py apps/nicegui_app.py
 ```
 
-This validates the strategy on historical data before live trading.
+Then open `http://localhost:8080` in your browser. The dashboard provides:
+- Strategy selection and parameter editing
+- Config file management
+- Real-time backtest progress
+- Results visualization (equity curves, metrics, trade logs)
+- Run comparison tools
 
-### Live Trading Mode
+#### Via CLI
 
-```batch
-# Terminal 1: Start data collector
-scripts\start_live_data_collector.bat
+```bash
+# Using a config file
+py -m index_options_bt.run.cli --config configs/breakout_nifty_sqlite.yaml --start 2025-01-10 --end 2025-01-11
 
-# Terminal 2: Start paper trading dashboard
-scripts\start_live_paper_trading.bat
+# With CLI overrides
+py -m index_options_bt.run.cli --config configs/ema_crossover_nifty_sqlite.yaml --set strategy.params.fast_period=15
 ```
 
-Open http://localhost:8080 in your browser.
+#### Programmatically
+
+```python
+from index_options_bt.config import load_config
+from index_options_bt.run.runner import run_backtest
+
+# Load config
+cfg = load_config("configs/breakout_nifty_sqlite.yaml")
+
+# Override dates
+cfg.engine.start = "2025-01-10"
+cfg.engine.end = "2025-01-11"
+
+# Run backtest
+results = run_backtest(cfg)
+print(f"Total Trades: {results['total_trades']}")
+print(f"Net P&L: ₹{results['net_pnl']:,.2f}")
+```
 
 ---
 
@@ -59,268 +93,286 @@ Open http://localhost:8080 in your browser.
 
 ```
 NIFTY_Options_Backtest/
-├── backtest_engine.py          # Backtest engine (NEW)
-├── test_backtest_engine.py     # Backtest test script
-├── live_trading_engine.py      # Live trading strategy
-├── live_dashboard.py           # NiceGUI dashboard
-├── trade_store.py              # Trade data management
+├── index_options_bt/          # Main backtest engine package
+│   ├── config/                # Configuration schemas and loaders
+│   ├── data/                  # Data providers (SQLite, bars, calendars)
+│   ├── strategy/              # Strategy base classes and implementations
+│   ├── execution/             # Contract selection and execution simulation
+│   ├── portfolio/             # Portfolio management and PnL tracking
+│   ├── risk/                  # Risk management and position sizing
+│   └── run/                   # Backtest runner, CLI, and artifacts
 │
-├── Documents/
-│   ├── Trading_Strategy_Complete_Guide.md  # Strategy documentation
-│   ├── claude_backtest_handoff.md          # Backtest specifications
-│   └── backtest_engine_corrections.md      # Technical review
+├── apps/
+│   └── nicegui_app.py        # Interactive web dashboard
 │
-├── scripts/                    # Startup scripts
-├── broadcaster/                # Data collection
-├── paper_trading/             # Trade tracking
-└── vps_data_collector/        # VPS data sync
+├── configs/                   # Strategy configuration files (YAML)
+│   ├── breakout_nifty_sqlite.yaml
+│   ├── ema_crossover_nifty_sqlite.yaml
+│   └── sample_strangle_sqlite.yaml
+│
+├── examples/                  # Example scripts
+│   └── run_backtest.py
+│
+├── tests/                     # Unit tests
+│   ├── test_config_loader.py
+│   ├── test_contract_selector.py
+│   ├── test_execution_model.py
+│   ├── test_portfolio_pnl.py
+│   ├── test_registry.py
+│   ├── test_risk_manager.py
+│   ├── test_run_artifacts.py
+│   ├── test_sqlite_provider.py
+│   └── test_backend.py        # Backend testing script
+│
+├── runs/                      # Backtest run outputs
+│   └── run-YYYYMMDD-HHMMSS-XXX/
+│       ├── config_resolved.json
+│       ├── equity_curve.csv
+│       ├── trades.csv
+│       ├── positions.csv
+│       ├── selection.csv
+│       ├── metrics.json
+│       └── run.log
+│
+├── reports/                   # Excel exports (IST datetime)
+│   └── run-YYYYMMDD-HHMMSS-XXX.xlsx
+│
+├── data/                      # Local database files (optional)
+│   ├── nifty_live.db
+│   └── nifty_replay.db
+│
+├── Archive/                   # Archived old files (for reference)
+│
+├── export_excel.py            # Excel export CLI script
+├── README.md                  # This file
+└── requirements_dashboard.txt # Python dependencies
 ```
 
 ---
 
-## 🎯 Strategy Details
+## 🎯 Architecture
 
-### 3-Stage Approach
+### Core Concepts
 
-#### Stage 1: Trend Detection
-- **30-second candles** from NIFTY 50 tick data
-- **0.11% cumulative move** threshold
-- Direction tracking (UP/DOWN/NEUTRAL)
+1. **DataProvider**: Fetches market data (spot, futures, options chain) for a given timestamp
+2. **Strategy**: Generates trading "intents" (LONG_CALL, LONG_PUT, FLAT) based on spot-derived features
+3. **Contract Selector**: Converts intents into specific option contracts based on criteria (ATM, DTE, Delta, liquidity)
+4. **Execution Model**: Simulates trade fills with slippage, commissions, and fees
+5. **Portfolio**: Tracks positions, calculates PnL (realized/unrealized), handles expiry
+6. **Risk Manager**: Enforces position limits, notional caps, and loss limits
 
-#### Stage 2: Pattern Analysis
-- **60-second window** of options Greeks
-- **Fast indicators**: IV, Delta, Volume Ratio, Premium Momentum
-- **Thresholds**:
-  - IV Change: ±5%
-  - Volume Ratio Change: ±10%
-  - Delta Change: ±0.03
-  - Premium Momentum: ±2%
+### Event Loop
 
-#### Stage 3: Trade Execution
-- **Entry**: ATM options (CE/PE) based on pattern direction
-- **Exits**:
-  - Target: +10%
-  - Stop Loss: -5%
-  - Time: 3 minutes max hold
-- **Lot Size**: 3750 (50 lots × 75 qty)
+For each timestamp (bar) in the backtest:
+1. **Pull Data**: Fetch spot, futures, and options chain snapshot
+2. **Compute Features**: Calculate indicators (e.g., EMAs, breakouts, volume ratios)
+3. **Generate Intents**: Strategy produces trading intents based on features
+4. **Risk Management**: Check position limits and size positions
+5. **Contract Selection**: Select specific option contracts for intents
+6. **Execution**: Simulate order fills
+7. **Portfolio Update**: Apply fills, calculate MTM, check TP/SL
+8. **Expiry Handling**: Close/settle expiring contracts
 
 ---
 
-## 🔬 Backtest Engine
+## 📝 Available Strategies
 
-### Features
+### 1. Breakout Strategy (`example_breakout`)
 
-✅ **Reuses Live Strategy Logic**: Same code as `live_trading_engine.py`  
-✅ **Data Availability Pre-Check**: Eliminates invalid signals  
-✅ **Independent Pattern Window**: Zero overlap with signal candle  
-✅ **Industry-Standard Candles**: Clock-aligned 30-second intervals  
-✅ **Complete Trade Simulation**: Entry, exits, P&L with transaction costs
+Detects price breakouts above/below recent highs/lows.
 
-### Usage
+**Parameters:**
+- `lookback_bars`: Number of bars to look back (default: 20)
+- `breakout_threshold_pct`: Percentage move to trigger breakout (default: 0.05%)
+- `take_profit_pct`: Take profit percentage (default: 10.0%)
+- `stop_loss_pct`: Stop loss percentage (default: 5.0%)
 
-```python
-from backtest_engine import BacktestEngine
+**Config:** `configs/breakout_nifty_sqlite.yaml`
 
-# Initialize
-engine = BacktestEngine(
-    db_path=r"G:\Projects\Centralize Data Centre\data\nifty_local.db",
-    config={
-        'candle_interval_seconds': 30,
-        'movement_threshold': 0.11,
-        'pattern_window_seconds': 60,
-        'lot_size': 3750,
-        'target_pct': 10.0,
-        'stop_pct': 5.0,
-        'max_hold_minutes': 3.0
-    }
-)
+### 2. EMA Crossover Strategy (`ema_crossover`)
 
-# Run backtest
-results = engine.run(start_date="2025-08-29", end_date="2026-01-01")
+Generates signals based on fast/slow EMA crossovers.
 
-# View results
-print(f"Total Trades: {results.total_trades}")
-print(f"Win Rate: {results.win_rate:.2f}%")
-print(f"Net P&L: ₹{results.total_net_pnl:,.2f}")
-print(f"Profit Factor: {results.profit_factor:.2f}")
-```
+**Parameters:**
+- `fast_period`: Fast EMA period (default: 12)
+- `slow_period`: Slow EMA period (default: 26)
+- `take_profit_pct`: Take profit percentage (default: 10.0%)
+- `stop_loss_pct`: Stop loss percentage (default: 5.0%)
 
-### Validation
+**Config:** `configs/ema_crossover_nifty_sqlite.yaml`
 
-The backtest engine was validated against proven results:
+### 3. Strangle Strategy (`strangle`)
 
-| Metric | Expected | Achieved | Match |
-|--------|----------|----------|-------|
-| Trade Timestamps | 114 | 111 | **97.4%** |
-| Total Trades | 114 | 150 | +36 extra |
-| Win Rate | 57.89% | 52.00% | -5.89% |
-| Profit | ₹1.04M | ₹858K | -17.4% |
+Multi-leg options selling strategy (example for future extension).
 
-**Extra 39 Trades**: Profitable (₹197K, 56.4% WR) - valid based on data availability.
-
----
-
-## 📊 Live Dashboard
-
-### Features
-
-- **Real-Time Monitoring**: Live feed status, connection tracking
-- **Multi-Tab Interface**:
-  - Overview: System status and quick stats
-  - Candle Building: 30-second OHLC construction
-  - Pattern Analysis: Trend detection and cumulative moves
-  - Signal Generation: Pattern confirmation and trade signals
-  - Trade Execution: Active trades and P&L tracking
-  - Trade History: Complete trade log with filters
-  
-- **Live Charts**: Real-time NIFTY price and trade P&L
-- **Log Streaming**: Filtered logs for each stage
-
-### Access
-
-```
-http://localhost:8080
-```
-
----
-
-## 🗄️ Database
-
-### Structure
-
-**Database**: `nifty_local.db` (SQLite)
-
-**Table**: `ltp_ticks`
-- `ts`: Timestamp (ISO format with timezone)
-- `symbol`: NIFTY 50 or option symbol
-- `ltp`: Last traded price
-- `volume`, `oi`: Volume and open interest
-- `iv`, `delta`, `gamma`, `theta`, `vega`: Greeks
-
-### Data Source
-
-- **Live**: Angel One API via broadcaster
-- **Historical**: VPS data collector sync
-
----
-
-## 📚 Documentation
-
-### Strategy Documentation
-- **[Trading_Strategy_Complete_Guide.md](Documents/Trading_Strategy_Complete_Guide.md)**: Complete strategy explanation with examples
-
-### Backtest Documentation
-- **[claude_backtest_handoff.md](Documents/claude_backtest_handoff.md)**: Backtest specifications and requirements
-- **[backtest_engine_corrections.md](Documents/backtest_engine_corrections.md)**: Technical review and responses
-
-### Handoff Documents
-- **[chatgpt_handoff.md](chatgpt_handoff.md)**: Live trading system handoff
+**Config:** `configs/sample_strangle_sqlite.yaml`
 
 ---
 
 ## 🔧 Configuration
 
-### Strategy Parameters
+Configuration files use YAML format and support:
+- Strategy selection and parameters
+- Data source settings
+- Contract selection criteria
+- Risk management limits
+- Execution parameters
+- Date ranges
 
-Edit in `backtest_engine.py` or `live_trading_engine.py`:
+### Example Config
 
-```python
-config = {
-    'candle_interval_seconds': 30,      # Candle size
-    'movement_threshold': 0.11,         # Trend threshold (%)
-    'pattern_window_seconds': 60,       # Pattern analysis window
-    'lot_size': 3750,                   # Position size
-    'target_pct': 10.0,                 # Target profit (%)
-    'stop_pct': 5.0,                    # Stop loss (%)
-    'max_hold_minutes': 3.0,            # Max hold time
-}
+```yaml
+engine:
+  provider: "sqlite"
+  db_path: "G:/Projects/Centralize Data Centre/data/nifty_local.db"
+  start: "2025-01-10"
+  end: "2025-01-11"
+  bar_size_seconds: 30
+
+strategy:
+  name: "ema_crossover"
+  params:
+    fast_period: 12
+    slow_period: 26
+    take_profit_pct: 10.0
+    stop_loss_pct: 5.0
+
+selector:
+  mode: "atm"
+  expiry_preference: "nearest"
+  contract_multiplier: 75
+  liquidity:
+    min_bid: 0.0
+    max_spread_pct: 1.0
+
+risk:
+  max_notional: 1000000.0
+  max_loss_per_trade: 50000.0
+  max_loss_per_day: 100000.0
+
+execution:
+  slippage_bps: 5.0
+  commission_per_contract: 20.0
+  fallback_price: "ltp"
 ```
 
-### Pattern Thresholds
+### Environment Overrides
 
-Edit in `live_trading_engine.py`:
+Override config values via environment variables:
+```bash
+export ENGINE_START="2025-01-10"
+export STRATEGY_PARAMS__FAST_PERIOD=15
+export RISK__MAX_NOTIONAL=2000000.0
+```
 
-```python
-THRESHOLDS_DEFAULT = {
-    "iv_change_pct": 5.0,              # IV change threshold
-    "volume_ratio_change": 10.0,       # Volume ratio change
-    "delta_change": 0.03,              # Delta change
-    "premium_momentum": 2.0,           # Premium momentum (%)
-}
+### CLI Overrides
+
+Override config values via CLI flags:
+```bash
+py -m index_options_bt.run.cli --config configs/ema_crossover_nifty_sqlite.yaml \
+  --set strategy.params.fast_period=15 \
+  --set risk.max_notional=2000000.0
 ```
 
 ---
 
 ## 🧪 Testing
 
-### Run Backtest
-
+Run all tests:
 ```bash
-python test_backtest_engine.py
+py -m pytest tests/ -v
 ```
 
-### Test Live Engine (Replay Mode)
-
+Run specific test file:
 ```bash
-# Terminal 1: Start broadcaster writer
-scripts\start_broadcaster_writer.bat
+py -m pytest tests/test_contract_selector.py -v
+```
 
-# Terminal 2: Start dashboard
-scripts\start_live_dashboard.bat
+Run with coverage:
+```bash
+py -m pytest tests/ --cov=index_options_bt --cov-report=html
 ```
 
 ---
 
-## 📈 Results
+## 📊 Run Artifacts
 
-### Backtest Performance (Aug 29, 2025 - Jan 1, 2026)
+Each backtest run generates standardized outputs in `runs/run-<timestamp>/`:
 
-- **Data Processed**: 355,761 NIFTY ticks
-- **Candles Built**: 59,507 (30-second)
-- **Trends Detected**: 150 (with data availability check)
-- **Trades Executed**: 150
-- **Win Rate**: 52.00%
-- **Total Net P&L**: ₹858,359
-- **Profit Factor**: 1.80
-- **Avg Win**: ₹24,801
-- **Avg Loss**: ₹14,946
-- **Max Win**: ₹61,132
-- **Max Loss**: ₹40,140
-- **Avg Hold Time**: 1.5 minutes
+- **`config_resolved.json`**: Final resolved configuration (with overrides applied)
+- **`equity_curve.csv`**: Portfolio value over time
+- **`trades.csv`**: Complete trade log (entry/exit times, prices, PnL)
+- **`positions.csv`**: Position history (snapshots at each bar)
+- **`selection.csv`**: Contract selection log (which contracts were chosen and why)
+- **`metrics.json`**: Summary statistics (win rate, profit factor, max drawdown, etc.)
+- **`run.log`**: Detailed execution log
+- **`report.png`**: Equity curve visualization
 
-### Exit Breakdown
+---
 
-- **TARGET**: 40% of trades
-- **STOP_LOSS**: 35% of trades
-- **TIME**: 25% of trades
+## 🔌 Adding New Strategies
+
+1. **Create Strategy Class**:
+
+```python
+from index_options_bt.strategy.base import Strategy, Intent
+from index_options_bt.strategy.registry import register_strategy
+
+@register_strategy("my_strategy")
+class MyStrategy(Strategy):
+    def __init__(self, params: dict):
+        super().__init__(params)
+        self.param1 = params.get("param1", 10)
+    
+    def generate_intents(self, snapshot: MarketSnapshot, features: dict) -> list[Intent]:
+        # Your strategy logic here
+        if some_condition:
+            return [Intent(
+                direction="LONG_CALL",
+                quantity=1,
+                metadata={"take_profit_pct": 10.0, "stop_loss_pct": 5.0}
+            )]
+        return []
+```
+
+2. **Create Config File**:
+
+```yaml
+strategy:
+  name: "my_strategy"
+  params:
+    param1: 10
+    take_profit_pct: 10.0
+    stop_loss_pct: 5.0
+```
+
+3. **Run Backtest**:
+
+```bash
+py apps/nicegui_app.py
+# Select your config and run!
+```
+
+---
+
+## 📚 Documentation
+
+- **Strategy Guide**: See strategy docstrings and example configs
+- **API Reference**: Inline docstrings for all classes and methods
+- **Archived Docs**: See `Archive/old_docs/` for historical documentation
 
 ---
 
 ## 🛠️ Development
 
-### Recent Improvements (v2.0.0)
-
-1. ✅ **Data Availability Pre-Check**: Eliminates 23 invalid signals
-2. ✅ **Independent Pattern Window**: Zero overlap with signal candle
-3. ✅ **Incomplete Candle Filtering**: Minimum 3 ticks per candle
-4. ✅ **Comprehensive Documentation**: Complete strategy guide
-
 ### Code Quality
 
-- **Type Hints**: Full type annotations
-- **Logging**: Detailed logging at all stages
-- **Error Handling**: Robust error handling
-- **Comments**: Inline documentation
+- **Type Hints**: Full type annotations throughout
+- **Docstrings**: Google-style docstrings for all public APIs
+- **Testing**: Comprehensive unit tests with pytest
+- **Linting**: Use `ruff` or `black` for formatting
 
----
-
-## 📝 License
-
-MIT License - See LICENSE file for details
-
----
-
-## 🤝 Contributing
+### Contributing
 
 This is a personal trading system. For questions or suggestions, please open an issue.
 
@@ -328,22 +380,23 @@ This is a personal trading system. For questions or suggestions, please open an 
 
 ## ⚠️ Disclaimer
 
-This is a **paper trading system** for educational and testing purposes only. 
+This is a **backtesting framework** for educational and research purposes only.
 
-**NOT FOR LIVE TRADING** without proper risk management and testing.
+**NOT FOR LIVE TRADING** without proper risk management, testing, and compliance review.
 
-Past performance does not guarantee future results.
+Past performance does not guarantee future results. All trading involves risk.
 
 ---
 
 ## 📞 Support
 
 For issues or questions:
-1. Check documentation in `Documents/`
-2. Review `CHANGELOG.md` for recent changes
-3. Open an issue on GitHub
+1. Check the inline docstrings and example configs
+2. Review the test files for usage examples
+3. Check `Archive/old_docs/` for historical context
 
 ---
 
-**Version**: 2.0.0  
-**Last Updated**: January 9, 2026
+**Version**: 3.0.0 (Modular Engine)  
+**Last Updated**: January 11, 2026
+

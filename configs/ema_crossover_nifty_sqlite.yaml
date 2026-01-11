@@ -1,0 +1,58 @@
+# EMA Crossover Strategy Configuration for NIFTY Options (SQLite Provider)
+# Simple moving average crossover strategy for testing
+
+data:
+  provider: sqlite
+  sqlite_path: "G:/Projects/Centralize Data Centre/data/nifty_local.db"
+  table: "ltp_ticks"
+  symbol_index: "NIFTY 50"
+
+engine:
+  start: "2025-10-01"
+  end: "2025-10-15"
+  bar_size: "15s"  # Recommended for speed; can set to "5s" for higher resolution
+  tz_display: "Asia/Kolkata"
+  normalize_to_utc: true
+  session_start_ist: "09:15"
+  session_end_ist: "15:30"
+
+selector:
+  mode: "atm"  # At-the-money selection
+  expiry_preference: "nearest"  # Use nearest expiry (weekly filter was too strict)
+  contract_multiplier: 75  # NIFTY options lot size (as per your requirement)
+  liquidity:
+    min_bid: 0.0  # Database has bid=0, ask=0 for all options - we use LTP instead (matches old engine)
+    max_spread_pct: 1.0  # Spread filter relaxed since bid/ask are 0 - we rely on LTP availability
+    min_oi: 0
+    min_volume: 0
+
+execution:
+  fill_on: "bidask"  # Fill at bid/ask if available, otherwise LTP (database has bid=0, ask=0, so uses LTP)
+  fallback_price: "ltp"  # Use LTP when bid/ask are missing (matches old engine behavior)
+  slippage_bps: 2.0  # 2 basis points slippage
+  commission_per_contract: 0.0
+  fees_per_contract: 0.0
+  partial_fills: false
+
+risk:
+  max_contracts: 4
+  max_notional: null
+  max_loss_per_trade: null
+  max_loss_per_day: null
+  margin_per_contract: null
+
+reporting:
+  run_dir_root: "runs"
+  save_csv: true
+  save_plot: true
+  save_log: true
+
+strategy:
+  name: "ema_crossover"
+  params:
+    fast_period: 12  # Fast EMA period
+    slow_period: 26  # Slow EMA period
+    min_bars: 26     # Minimum bars required before generating signals
+    take_profit_pct: 10.0  # Take profit at 10% gain (on option premium)
+    stop_loss_pct: 5.0     # Stop loss at 5% loss (on option premium)
+

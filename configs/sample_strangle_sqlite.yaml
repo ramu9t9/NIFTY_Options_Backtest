@@ -1,0 +1,59 @@
+# Sample Strangle Strategy Configuration for NIFTY Options (SQLite Provider)
+# Example config demonstrating multi-leg strategy setup
+
+data:
+  provider: sqlite
+  sqlite_path: "G:/Projects/Centralize Data Centre/data/nifty_local.db"
+  table: "ltp_ticks"
+  symbol_index: "NIFTY 50"
+
+engine:
+  start: "2025-10-01"
+  end: "2025-10-15"
+  bar_size: "15s"
+  tz_display: "Asia/Kolkata"
+  normalize_to_utc: true
+  session_start_ist: "09:15"
+  session_end_ist: "15:30"
+
+selector:
+  mode: "delta"  # Delta-based selection for strangle
+  expiry_preference: "nearest"  # DB expiries may not be Thursday-weekly; use nearest
+  contract_multiplier: 75  # NIFTY lot size (as per your requirement)
+  target_delta: 0.25  # Target ~0.25 delta magnitude (puts use -0.25 automatically)
+  liquidity:
+    min_bid: 0.0  # bid/ask are 0 in this DB; selector relies on LTP
+    max_spread_pct: 1.0
+    min_oi: 0
+    min_volume: 0
+
+execution:
+  fill_on: "bidask"
+  fallback_price: "ltp"
+  slippage_bps: 2.0
+  commission_per_contract: 0.0
+  fees_per_contract: 0.0
+  partial_fills: false
+
+risk:
+  max_contracts: 2  # 1 call + 1 put leg
+  max_notional: 500000  # Max INR 5L exposure
+  max_loss_per_trade: 10000  # Max INR 10K loss per trade
+  max_loss_per_day: 50000  # Max INR 50K loss per day
+  margin_per_contract: 50000  # Approximate margin per contract
+
+reporting:
+  run_dir_root: "runs"
+  save_csv: true
+  save_plot: true
+  save_log: true
+
+strategy:
+  name: "strangle"
+  params:
+    entry_time_ist: "10:00"
+    size: 1
+    max_hold_bars: 240  # ~1 hour on 15s bars
+    take_profit_pct: 20.0  # for shorts: profit when premium falls 20%
+    stop_loss_pct: 20.0    # for shorts: stop when premium rises 20%
+
