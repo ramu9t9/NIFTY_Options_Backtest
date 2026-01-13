@@ -13,6 +13,12 @@ Usage:
 import sys
 from pathlib import Path
 from datetime import datetime
+import os
+import pytest
+
+# This is an integration test script that requires an external DB and can be slow.
+if os.environ.get("RUN_SLOW_TESTS", "0") != "1":
+    pytest.skip("Skipping slow backend integration script (set RUN_SLOW_TESTS=1 to run).", allow_module_level=True)
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -107,13 +113,14 @@ def test_ema_crossover_strategy():
         print(f"  - Run Directory: {result.run_dir}")
         print(f"  - Excel File: {excel_path}")
         
-        return True
+        assert True
+        return
         
     except Exception as e:
         print(f"\n✗ Error during backend testing: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        raise
 
 
 def verify_strategy_implementation():

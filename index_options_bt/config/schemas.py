@@ -15,6 +15,10 @@ class DataConfig(BaseModel):
     sqlite_path: Optional[str] = Field(default=None, description="Path to SQLite database")
     table: str = Field(default="ltp_ticks", description="Table name in database")
     symbol_index: str = Field(default="NIFTY 50", description="Index symbol name")
+    volume_mode: Literal["incremental", "cumulative"] = Field(
+        default="incremental",
+        description="How tick 'volume' should be interpreted when building bars: incremental=sum(ticks), cumulative=last-first (clamped).",
+    )
     
     # CSV provider fields (optional)
     csv_spot_path: Optional[str] = Field(default=None, description="Path to spot CSV file")
@@ -36,6 +40,10 @@ class EngineConfig(BaseModel):
     bar_size: str = Field(default="15s", description="Bar size frequency (e.g., '5s', '15s', '30s', '1min')")
     tz_display: str = Field(default="Asia/Kolkata", description="Display timezone")
     normalize_to_utc: bool = Field(default=True, description="Normalize timestamps to UTC internally")
+
+    # Execution realism / constraints
+    buy_only: bool = Field(default=True, description="If True, disallow SHORT intents / option-selling positions (BUY-only engine).")
+    entry_on_next_bar: bool = Field(default=True, description="If True, execute entry fills on the next bar after the signal (reduces lookahead).")
     
     # Session settings (optional, defaults used if not specified)
     session_start_ist: Optional[str] = Field(default="09:15", description="Session start time in IST (HH:MM)")
@@ -92,8 +100,8 @@ class EngineConfig(BaseModel):
 
 class ExecutionConfig(BaseModel):
     """Execution model configuration"""
-    fill_on: Literal["bidask", "mid"] = Field(default="bidask", description="Fill price method")
-    fallback_price: Literal["mid", "ltp"] = Field(default="mid", description="Fallback price if bid/ask missing")
+    fill_on: Literal["ltp", "bidask", "mid"] = Field(default="ltp", description="Fill price method (ltp recommended; bidask/mid kept for backward compatibility)")
+    fallback_price: Literal["mid", "ltp"] = Field(default="ltp", description="Fallback price (legacy; ignored for LTP-only execution)")
     slippage_bps: float = Field(default=2.0, description="Slippage in basis points (1bp = 0.01%)")
     commission_per_contract: float = Field(default=0.0, description="Commission per contract")
     fees_per_contract: float = Field(default=0.0, description="Exchange fees per contract")
@@ -118,12 +126,14 @@ class LiquidityFilters(BaseModel):
 
 class SelectorConfig(BaseModel):
     """Contract selector configuration"""
-    mode: Literal["atm", "delta", "dte"] = Field(default="atm", description="Selection mode")
+    mode: Literal["atm", "delta", "dte", "itm"] = Field(default="atm", description="Selection mode")
     expiry_preference: Literal["weekly", "monthly", "nearest"] = Field(default="weekly", description="Expiry preference")
     contract_multiplier: int = Field(default=1, description="Contract multiplier / lot size (e.g., 50 for NIFTY options)")
     strike_window: Optional[StrikeWindow] = Field(default_factory=StrikeWindow, description="Strike window filter")
     target_dte: Optional[int] = Field(default=None, description="Target days to expiry (for dte mode)")
     target_delta: Optional[float] = Field(default=None, description="Target delta (for delta mode, e.g., 0.25)")
+    itm_steps: int = Field(default=1, description="For itm mode: number of strike steps ITM (1 means ATM±1*step)")
+    strike_step: int = Field(default=50, description="For itm mode: strike step size (NIFTY typically 50)")
     liquidity: LiquidityFilters = Field(default_factory=LiquidityFilters, description="Liquidity filters")
 
 

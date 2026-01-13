@@ -68,6 +68,12 @@ py -m index_options_bt.run.cli --config configs/breakout_nifty_sqlite.yaml --sta
 py -m index_options_bt.run.cli --config configs/ema_crossover_nifty_sqlite.yaml --set strategy.params.fast_period=15
 ```
 
+### One-day smoke run (recommended)
+
+```bash
+py -m index_options_bt.run.cli --config configs/nifty_micro_scalp.yaml --start 2025-01-10 --end 2025-01-10
+```
+
 #### Programmatically
 
 ```python

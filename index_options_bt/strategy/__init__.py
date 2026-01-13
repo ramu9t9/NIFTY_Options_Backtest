@@ -21,6 +21,18 @@ except ImportError:
     pass
 
 try:
+    from .nifty_micro_scalp import NiftyMicroScalpStrategy
+except ImportError:
+    # Strategy not implemented yet
+    pass
+
+try:
+    from .pre_rally_pattern import PreRallyPatternStrategy
+except ImportError:
+    # Strategy not implemented yet
+    pass
+
+try:
     from .strangle import ShortStrangleStrategy
 except ImportError:
     # Strategy not implemented yet

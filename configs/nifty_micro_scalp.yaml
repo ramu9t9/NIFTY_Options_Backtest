@@ -1,0 +1,89 @@
+data:
+  provider: sqlite
+  sqlite_path: "G:/Projects/Centralize Data Centre/data/nifty_local.db"
+  table: ltp_ticks
+  symbol_index: "NIFTY 50"
+  volume_mode: incremental
+
+engine:
+  start: "2025-01-10"
+  end: "2025-01-11"
+  bar_size: "30s"
+  tz_display: "Asia/Kolkata"
+  session_start_ist: "09:15"
+  session_end_ist: "15:30"
+
+execution:
+  fill_on: ltp
+  fallback_price: ltp
+  slippage_bps: 20
+  commission_per_contract: 0.0
+  fees_per_contract: 0.0
+
+selector:
+  mode: itm
+  expiry_preference: nearest
+  contract_multiplier: 75
+  itm_steps: 1
+  strike_step: 50
+  strike_window:
+    kind: count
+    value: 10
+  liquidity:
+    min_bid: 0.0
+    max_spread_pct: 1.0
+    min_oi: 0
+    min_volume: 0
+
+risk:
+  max_contracts: 1
+
+reporting:
+  run_dir_root: runs
+  save_csv: true
+  save_plot: true
+  save_log: true
+
+strategy:
+  name: nifty_micro_scalp
+  params:
+    # Spot impulse
+    range_z_lookback: 40
+    range_z_threshold: 1.4
+    body_ratio_threshold: 0.65
+    close_pos_threshold: 0.85
+
+    # Futures confirm
+    fut_ema_fast: 9
+    fut_ema_slow: 21
+    fut_breakout_lookback: 3
+    fut_momentum_threshold_pct: 0.02
+    use_fut_breakout: true
+
+    # Options confirm
+    delta_min: 0.55
+    delta_max: 0.75
+    iv_z_lookback: 40
+    iv_z_max: 1.0
+    vol_rise_lookback: 6
+    vol_rise_ratio: 1.2
+    require_oi_non_collapse: false
+    oi_drop_max_ratio: 0.15
+
+    # Chop filter + pacing
+    chop_flip_lookback: 10
+    chop_flip_max: 6
+    max_trades_per_day: 3
+    cooldown_bars: 4
+
+    # Exits (percent values)
+    stop_loss_pct: 18.0
+    take_profit_pct_1: 12.0
+    take_profit_pct_2: 25.0
+    tp1_fraction: 0.5
+    max_hold_bars: 2
+    time_stop_bars: 2
+    min_profit_pct_by_time_stop: 0.0
+
+
+

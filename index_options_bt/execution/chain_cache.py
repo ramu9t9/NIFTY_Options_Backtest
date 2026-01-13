@@ -39,8 +39,6 @@ def normalize_chain(chain: pd.DataFrame, ts_utc: datetime) -> pd.DataFrame:
                 "expiry",
                 "strike",
                 "cp",
-                "bid",
-                "ask",
                 "last",
                 "iv",
                 "delta",
@@ -49,8 +47,6 @@ def normalize_chain(chain: pd.DataFrame, ts_utc: datetime) -> pd.DataFrame:
                 "vega",
                 "volume",
                 "oi",
-                "mid",
-                "spread_pct",
                 "dte",
             ]
         )
@@ -64,8 +60,6 @@ def normalize_chain(chain: pd.DataFrame, ts_utc: datetime) -> pd.DataFrame:
         "expiry",
         "strike",
         "cp",
-        "bid",
-        "ask",
         "last",
         "iv",
         "delta",
@@ -82,22 +76,12 @@ def normalize_chain(chain: pd.DataFrame, ts_utc: datetime) -> pd.DataFrame:
     # expiry can be datetime/date; normalize to date
     df["expiry"] = df["expiry"].apply(_to_date)
     df["strike"] = pd.to_numeric(df["strike"], errors="coerce").astype("Int64")
-    df["bid"] = pd.to_numeric(df["bid"], errors="coerce")
-    df["ask"] = pd.to_numeric(df["ask"], errors="coerce")
     df["last"] = pd.to_numeric(df["last"], errors="coerce")
     df["oi"] = pd.to_numeric(df["oi"], errors="coerce")
     df["volume"] = pd.to_numeric(df["volume"], errors="coerce")
     df["delta"] = pd.to_numeric(df["delta"], errors="coerce")
 
-    # mid + spread%
-    df["mid"] = np.where(
-        np.isfinite(df["bid"]) & np.isfinite(df["ask"]),
-        (df["bid"] + df["ask"]) / 2.0,
-        df["last"],
-    )
-    spread = df["ask"] - df["bid"]
-    denom = df["mid"].replace(0, np.nan)
-    df["spread_pct"] = (spread / denom).replace([np.inf, -np.inf], np.nan)
+    # NOTE: bid/ask are not usable in our DB (always 0). We do not compute mid/spread.
 
     # dte: days to expiry (calendar days)
     ts_date = ts_utc.date()

@@ -49,7 +49,7 @@ def test_delta_selector_targets_delta_and_liquidity_filters():
     ts = datetime(2025, 10, 1, 9, 15, 15, tzinfo=timezone.utc)
     chain = pd.DataFrame(
         [
-            {"timestamp": ts, "symbol": "D1", "expiry": date(2025, 10, 2), "strike": 100, "cp": "C", "bid": 0.5, "ask": 5.0, "last": 3.0, "delta": 0.25, "oi": 1000, "volume": 100},
+            {"timestamp": ts, "symbol": "D1", "expiry": date(2025, 10, 2), "strike": 100, "cp": "C", "bid": 0.5, "ask": 5.0, "last": 3.0, "delta": 0.25, "oi": 1000, "volume": 0},
             {"timestamp": ts, "symbol": "D2", "expiry": date(2025, 10, 2), "strike": 105, "cp": "C", "bid": 2.0, "ask": 2.2, "last": 2.1, "delta": 0.30, "oi": 1000, "volume": 100},
         ]
     )
@@ -58,13 +58,38 @@ def test_delta_selector_targets_delta_and_liquidity_filters():
         target_delta=0.25,
         expiry_preference="nearest",
         strike_window=StrikeWindow(kind="count", value=10),
-        liquidity=LiquidityFilters(min_bid=1.0, max_spread_pct=0.5, min_oi=0, min_volume=0),
+        liquidity=LiquidityFilters(min_bid=0.0, max_spread_pct=1.0, min_oi=0, min_volume=50),
     )
     selector = build_selector(cfg, ChainCache())
     intent = Intent(timestamp=ts, direction="LONG", option_type="CALL", size=1)
     legs = selector.select(_snapshot(ts, 102, chain), intent, cfg)
-    # D1 filtered out by min_bid; D2 remains
+    # LTP-only selector ignores bid/ask; liquidity filter is based on min_volume/min_oi.
+    # D1 filtered out by min_volume; D2 remains.
     assert len(legs) == 1
     assert legs[0].contract.symbol == "D2"
+
+
+def test_itm_selector_picks_1_step_itm():
+    ts = datetime(2025, 10, 1, 9, 15, 15, tzinfo=timezone.utc)
+    chain = pd.DataFrame(
+        [
+            {"timestamp": ts, "symbol": "ITM1", "expiry": date(2025, 10, 2), "strike": 100, "cp": "C", "last": 10.0, "delta": 0.65, "oi": 1000, "volume": 100},
+            {"timestamp": ts, "symbol": "ITM2", "expiry": date(2025, 10, 2), "strike": 150, "cp": "C", "last": 5.0, "delta": 0.45, "oi": 1000, "volume": 100},
+        ]
+    )
+    cfg = SelectorConfig(
+        mode="itm",
+        expiry_preference="nearest",
+        itm_steps=1,
+        strike_step=50,
+        strike_window=StrikeWindow(kind="count", value=10),
+        liquidity=LiquidityFilters(min_bid=0.0, max_spread_pct=1.0, min_oi=0, min_volume=0),
+    )
+    selector = build_selector(cfg, ChainCache())
+    intent = Intent(timestamp=ts, direction="LONG", option_type="CALL", size=1)
+    # spot=151 -> ATM=150, ITM call -> 100
+    legs = selector.select(_snapshot(ts, 151, chain), intent, cfg)
+    assert len(legs) == 1
+    assert legs[0].contract.symbol == "ITM1"
 
 

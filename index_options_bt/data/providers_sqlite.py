@@ -37,6 +37,7 @@ class SQLiteDataProvider:
         chunking: str = "session",
         session_start_ist: time | str = DEFAULT_SESSION_START_IST,
         session_end_ist: time | str = DEFAULT_SESSION_END_IST,
+        volume_mode: str = "incremental",
     ):
         """
         Initialize SQLite data provider.
@@ -64,6 +65,7 @@ class SQLiteDataProvider:
         self.chunking = chunking
         self.session_start_ist = session_start_ist
         self.session_end_ist = session_end_ist
+        self.volume_mode = volume_mode
         
         # Session cache: keyed by (session_date_ist_str, bar_size)
         self._cache: Dict[_SessionCacheKey, Dict[str, pd.DataFrame]] = {}
@@ -130,8 +132,8 @@ class SQLiteDataProvider:
         if df.empty:
             return df
         
-        # Parse ts column to datetime
-        df["ts"] = pd.to_datetime(df["ts"], utc=True)
+        # Parse ts column to datetime (handle mixed formats: with/without microseconds)
+        df["ts"] = pd.to_datetime(df["ts"], format='mixed', errors='coerce', utc=True)
         
         return df
     
@@ -166,7 +168,7 @@ class SQLiteDataProvider:
         # Build spot/index bars
         spot_bars = pd.DataFrame()
         if not index_ticks.empty:
-            spot_bars = build_ohlcv(index_ticks, self.bar_size, price_col="ltp")
+            spot_bars = build_ohlcv(index_ticks, self.bar_size, price_col="ltp", volume_mode=self.volume_mode)
         
         # Build futures bars (take first FUT symbol if present)
         futures_bars = pd.DataFrame()
@@ -177,18 +179,20 @@ class SQLiteDataProvider:
                 primary_fut = fut_symbols[0]  # Could enhance to pick most liquid
                 primary_fut_ticks = fut_ticks[fut_ticks["symbol"] == primary_fut]
                 if not primary_fut_ticks.empty:
-                    futures_bars = build_ohlcv(primary_fut_ticks, self.bar_size, price_col="ltp")
+                    futures_bars = build_ohlcv(primary_fut_ticks, self.bar_size, price_col="ltp", volume_mode=self.volume_mode)
         
         # Build option chain snapshots (as-of)
         option_chain = pd.DataFrame()
         if not opt_ticks.empty:
-            option_chain = build_option_asof_snapshot(opt_ticks, bar_timestamps)
+            option_chain = build_option_asof_snapshot(opt_ticks, bar_timestamps, bar_size=self.bar_size, volume_mode=self.volume_mode)
         
         return {
             "spot_bars": spot_bars,
             "futures_bars": futures_bars,
             "bar_timestamps": bar_timestamps,
             "option_chain": option_chain,
+            # Keep raw option ticks for window-based strategies (no lookahead when windowed).
+            "options_ticks": opt_ticks,
         }
     
     def _get_session_cache_key(self, ts_utc: datetime) -> _SessionCacheKey:
@@ -295,6 +299,7 @@ class SQLiteDataProvider:
         spot_bars = session_data["spot_bars"]
         futures_bars = session_data["futures_bars"]
         option_chain = session_data["option_chain"]
+        options_ticks = session_data.get("options_ticks")
         
         # Get bars for this specific timestamp
         spot_bar = None
@@ -317,5 +322,6 @@ class SQLiteDataProvider:
             spot_bar=spot_bar,
             futures_bar=futures_bar,
             options_chain=chain_at_ts,
+            options_ticks=options_ticks,
         )
 

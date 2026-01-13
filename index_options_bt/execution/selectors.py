@@ -62,34 +62,39 @@ def _apply_strike_window(df: pd.DataFrame, spot: float, cfg: SelectorConfig) -> 
     return df[(df["strike"].astype(float) >= lo) & (df["strike"].astype(float) <= hi)]
 
 
+def _infer_strike_step(strikes: np.ndarray, default_step: int = 50) -> int:
+    strikes = np.asarray(strikes, dtype=float)
+    strikes = strikes[np.isfinite(strikes)]
+    if strikes.size < 2:
+        return int(default_step)
+    diffs = np.diff(np.sort(np.unique(strikes)))
+    diffs = diffs[np.isfinite(diffs) & (diffs > 0)]
+    if diffs.size == 0:
+        return int(default_step)
+    step = int(np.median(diffs))
+    return max(step, 1)
+
+
+def _round_to_step(x: float, step: int) -> int:
+    step = max(int(step), 1)
+    return int(round(float(x) / step) * step)
+
+
 def _apply_liquidity(df: pd.DataFrame, cfg: SelectorConfig) -> pd.DataFrame:
     """
     Apply liquidity filters. 
     
-    IMPORTANT: Like the old backtest engine, we primarily use LTP (last) for pricing.
-    If bid/ask are 0/NaN but LTP exists, we allow the contract (execution will use LTP).
+    IMPORTANT: Our DB does not provide usable bid/ask. Liquidity is based on:
+    - last (LTP) must be > 0
+    - min_volume/min_oi thresholds (optional)
     """
     if df.empty:
         return df
     liq = cfg.liquidity
     out = df.copy()
     
-    # Price filter: require either bid >= min_bid OR last (LTP) > 0
-    # This matches old engine behavior which uses LTP directly
-    if float(liq.min_bid) > 0:
-        has_price = (out["bid"].fillna(0) >= float(liq.min_bid)) | (out["last"].fillna(0) > 0)
-        out = out[has_price]
-    else:
-        # Even if min_bid=0, still require at least LTP to exist
-        out = out[out["last"].fillna(0) > 0]
-    
-    # Spread filter: if spread is NaN (bid/ask both 0), allow if LTP exists
-    # This is realistic - many options have 0 bid/ask but trade on LTP
-    if float(liq.max_spread_pct) < np.inf:
-        spread_ok = (out["spread_pct"].fillna(np.inf) <= float(liq.max_spread_pct)) | (
-            out["spread_pct"].isna() & (out["last"].fillna(0) > 0)
-        )
-        out = out[spread_ok]
+    # Price filter: require LTP
+    out = out[out["last"].fillna(0) > 0]
     
     # OI and volume filters (usually 0, so no filtering)
     out = out[out["oi"].fillna(0) >= float(liq.min_oi)]
@@ -115,7 +120,7 @@ def _deterministic_sort(
     if df.empty:
         return df
     # tie-break order:
-    # (expiry asc, spread_pct asc, abs(strike-spot) asc, abs(delta-target) asc, oi desc, volume desc, symbol asc)
+    # (expiry asc, abs(strike-spot) asc, abs(delta-target) asc, oi desc, volume desc, symbol asc)
     out = df.copy()
     out["abs_strike_spot"] = (out["strike"].astype(float) - float(spot)).abs()
     if target_delta is None or not np.isfinite(target_delta):
@@ -129,14 +134,13 @@ def _deterministic_sort(
     out = out.sort_values(
         by=[
             "expiry_sort",
-            "spread_pct",
             "abs_strike_spot",
             "abs_delta_target",
             "oi",
             "volume",
             "symbol",
         ],
-        ascending=[True, True, True, True, False, False, True],
+        ascending=[True, True, True, False, False, True],
         kind="mergesort",
     )
     return out.drop(columns=["abs_strike_spot", "abs_delta_target", "expiry_sort"], errors="ignore")
@@ -244,6 +248,38 @@ class DeltaSelector(_BaseSelector):
         return [self._make_leg(row, intent)]
 
 
+@dataclass
+class ITMSelector(_BaseSelector):
+    """Pick 1-step ITM contract (ATM±step) for nearest expiry (subject to filters)."""
+
+    def select(self, snapshot: MarketSnapshot, intent: Intent, selector_cfg: SelectorConfig) -> Sequence[SelectedLeg]:
+        df, spot, cp = self._prep(snapshot, selector_cfg, intent)
+        if df.empty or not np.isfinite(spot):
+            return []
+
+        strikes = pd.to_numeric(df["strike"], errors="coerce").dropna().values
+        step = int(getattr(selector_cfg, "strike_step", 50)) or _infer_strike_step(strikes, default_step=50)
+        atm = _round_to_step(float(spot), step)
+        steps = int(getattr(selector_cfg, "itm_steps", 1))
+        steps = max(steps, 0)
+
+        if cp == "C":
+            target_strike = int(atm - steps * step)
+        else:
+            target_strike = int(atm + steps * step)
+
+        out = df.copy()
+        out["abs_strike_target"] = (pd.to_numeric(out["strike"], errors="coerce") - float(target_strike)).abs()
+        out["expiry_sort"] = out["expiry"].apply(lambda d: d.toordinal() if isinstance(d, date) else 10**12)
+        out = out.sort_values(
+            by=["expiry_sort", "abs_strike_target", "oi", "volume", "symbol"],
+            ascending=[True, True, False, False, True],
+            kind="mergesort",
+        )
+        row = out.iloc[0]
+        return [self._make_leg(row, intent)]
+
+
 def build_selector(cfg: SelectorConfig, chain_cache: ChainCache, contract_multiplier: int = 1) -> ContractSelector:
     if cfg.mode == "atm":
         return ATMSelector(chain_cache=chain_cache, contract_multiplier=contract_multiplier)
@@ -251,6 +287,8 @@ def build_selector(cfg: SelectorConfig, chain_cache: ChainCache, contract_multip
         return DTESelector(chain_cache=chain_cache, contract_multiplier=contract_multiplier)
     if cfg.mode == "delta":
         return DeltaSelector(chain_cache=chain_cache, contract_multiplier=contract_multiplier)
+    if cfg.mode == "itm":
+        return ITMSelector(chain_cache=chain_cache, contract_multiplier=contract_multiplier)
     return ATMSelector(chain_cache=chain_cache, contract_multiplier=contract_multiplier)
 
 

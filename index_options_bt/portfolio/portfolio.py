@@ -48,10 +48,23 @@ class Position:
     hold_bars: int = 0
     realized_pnl: float = 0.0
     entry_price: Optional[float] = None
+    entry_side: Optional[Side] = None
+
+    # Excursions (tracked during position lifetime, in premium % terms relative to entry)
+    mae_pct: float = 0.0  # most adverse excursion (min signed return %)
+    mfe_pct: float = 0.0  # most favorable excursion (max signed return %)
+    mae_price: Optional[float] = None
+    mfe_price: Optional[float] = None
 
     # Optional per-position risk params
     stop_loss_pct: Optional[float] = None  # premium stop (% drawdown from entry)
     take_profit_pct: Optional[float] = None  # premium target (% gain from entry)
+    take_profit_pct_1: Optional[float] = None  # optional TP1 (% gain from entry)
+    take_profit_pct_2: Optional[float] = None  # optional TP2 (% gain from entry)
+    tp1_fraction: Optional[float] = None  # fraction of qty to close at TP1
+    tp1_done: bool = False
+    time_stop_bars: Optional[int] = None
+    min_profit_pct_by_time_stop: Optional[float] = None
     max_hold_bars: Optional[int] = None
 
 
@@ -86,6 +99,11 @@ class Portfolio:
         multiplier: int = 1,
         stop_loss_pct: Optional[float] = None,
         take_profit_pct: Optional[float] = None,
+        take_profit_pct_1: Optional[float] = None,
+        take_profit_pct_2: Optional[float] = None,
+        tp1_fraction: Optional[float] = None,
+        time_stop_bars: Optional[int] = None,
+        min_profit_pct_by_time_stop: Optional[float] = None,
         max_hold_bars: Optional[int] = None,
     ) -> None:
         """Apply a fill to the portfolio and update positions + realized PnL."""
@@ -125,8 +143,19 @@ class Portfolio:
             if pos.entry_ts is None:
                 pos.entry_ts = ts
                 pos.entry_price = float(price)
+                pos.entry_side = side
+                pos.mae_pct = 0.0
+                pos.mfe_pct = 0.0
+                pos.mae_price = float(price)
+                pos.mfe_price = float(price)
                 pos.stop_loss_pct = stop_loss_pct
                 pos.take_profit_pct = take_profit_pct
+                pos.take_profit_pct_1 = take_profit_pct_1
+                pos.take_profit_pct_2 = take_profit_pct_2
+                pos.tp1_fraction = tp1_fraction
+                pos.tp1_done = False
+                pos.time_stop_bars = time_stop_bars
+                pos.min_profit_pct_by_time_stop = min_profit_pct_by_time_stop
                 pos.max_hold_bars = max_hold_bars
         else:
             # reducing / flipping
@@ -149,8 +178,20 @@ class Portfolio:
                 pos.avg_price = float(price)
                 pos.entry_ts = ts
                 pos.hold_bars = 0
+                pos.entry_price = float(price)
+                pos.entry_side = side
+                pos.mae_pct = 0.0
+                pos.mfe_pct = 0.0
+                pos.mae_price = float(price)
+                pos.mfe_price = float(price)
                 pos.stop_loss_pct = stop_loss_pct
                 pos.take_profit_pct = take_profit_pct
+                pos.take_profit_pct_1 = take_profit_pct_1
+                pos.take_profit_pct_2 = take_profit_pct_2
+                pos.tp1_fraction = tp1_fraction
+                pos.tp1_done = False
+                pos.time_stop_bars = time_stop_bars
+                pos.min_profit_pct_by_time_stop = min_profit_pct_by_time_stop
                 pos.max_hold_bars = max_hold_bars
 
             if pos.qty == 0:
@@ -162,18 +203,35 @@ class Portfolio:
                             "symbol": pos.symbol,
                             "entry_time": pos.entry_ts,
                             "exit_time": ts,
+                            "entry_side": pos.entry_side,
                             "entry_price": float(pos.entry_price),
                             "exit_price": float(price),
                             "qty": close_qty,
                             "realized_pnl": float(realized_delta),
+                            "hold_bars": int(pos.hold_bars),
+                            "mae_pct": float(pos.mae_pct),
+                            "mfe_pct": float(pos.mfe_pct),
+                            "mae_price": float(pos.mae_price) if pos.mae_price is not None else None,
+                            "mfe_price": float(pos.mfe_price) if pos.mfe_price is not None else None,
                         }
                     )
                 pos.avg_price = 0.0
                 pos.entry_ts = None
                 pos.entry_price = None
+                pos.entry_side = None
                 pos.hold_bars = 0
+                pos.mae_pct = 0.0
+                pos.mfe_pct = 0.0
+                pos.mae_price = None
+                pos.mfe_price = None
                 pos.stop_loss_pct = None
                 pos.take_profit_pct = None
+                pos.take_profit_pct_1 = None
+                pos.take_profit_pct_2 = None
+                pos.tp1_fraction = None
+                pos.tp1_done = False
+                pos.time_stop_bars = None
+                pos.min_profit_pct_by_time_stop = None
                 pos.max_hold_bars = None
 
         self._trade_id += 1
@@ -213,30 +271,16 @@ class Portfolio:
                 continue
             df = chain[chain["symbol"] == pos.symbol] if not chain.empty else pd.DataFrame()
             mtm = None
-            bid = ask = last = mid = None
+            last = None
             if not df.empty:
                 r = df.iloc[0]
-                bid = r.get("bid")
-                ask = r.get("ask")
                 last = r.get("last")
-                try:
-                    bid = float(bid) if bid is not None else None
-                except Exception:
-                    bid = None
-                try:
-                    ask = float(ask) if ask is not None else None
-                except Exception:
-                    ask = None
                 try:
                     last = float(last) if last is not None else None
                 except Exception:
                     last = None
-                if bid is not None and ask is not None and np.isfinite(bid) and np.isfinite(ask):
-                    mid = (bid + ask) / 2.0
-            if price_source == "mid":
-                mtm = mid if mid is not None and np.isfinite(mid) else last
-            else:
-                mtm = last if last is not None and np.isfinite(last) else mid
+            # LTP-only MTM (bid/ask are not usable in our DB)
+            mtm = last
             if mtm is None or not np.isfinite(mtm):
                 mtm = pos.avg_price
 

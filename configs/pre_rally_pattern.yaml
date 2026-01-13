@@ -1,0 +1,69 @@
+data:
+  provider: sqlite
+  sqlite_path: "G:/Projects/Centralize Data Centre/data/nifty_local.db"
+  table: ltp_ticks
+  symbol_index: "NIFTY 50"
+  volume_mode: incremental
+
+engine:
+  start: "2025-08-29"
+  end: "2025-12-29"
+  bar_size: "30s"
+  tz_display: "Asia/Kolkata"
+  session_start_ist: "09:15"
+  session_end_ist: "15:30"
+
+execution:
+  fill_on: ltp
+  fallback_price: ltp
+  slippage_bps: 20
+  commission_per_contract: 0.0
+  fees_per_contract: 0.0
+
+selector:
+  mode: atm
+  expiry_preference: nearest
+  contract_multiplier: 75
+  strike_window:
+    kind: count
+    value: 10
+  liquidity:
+    min_bid: 0.0
+    max_spread_pct: 1.0
+    min_oi: 0
+    min_volume: 0
+
+risk:
+  # Legacy run used 50 lots (3750 qty). In standardized engine: 50 contracts × 75 lot size.
+  max_contracts: 50
+
+reporting:
+  run_dir_root: runs
+  save_csv: true
+  save_plot: true
+  save_log: true
+
+strategy:
+  name: pre_rally_pattern
+  params:
+    bar_size: "30s"
+    movement_threshold_pct: 0.11
+    pattern_window_seconds: 60
+    require_patterns_count: 1
+    skip_conflicts: false
+
+    # Exits (percent values)
+    take_profit_pct: 8.0
+    stop_loss_pct: 5.0
+    max_hold_minutes: 3.0
+
+    # Sizing: 50 contracts ~= 50 lots (each contract multiplier=75)
+    contracts: 50
+
+    thresholds:
+      iv_change_pct: 5.0
+      volume_ratio_change: 10.0
+      delta_change: 0.03
+      premium_momentum: 2.0
+
+

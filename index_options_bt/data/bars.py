@@ -16,12 +16,32 @@ DEFAULT_VOLUME_AGG = "max"  # Safer for snapshot semantics
 DEFAULT_OI_AGG = "last"
 
 
+def _bar_volume(
+    df: pd.DataFrame,
+    resampled: pd.core.resample.Resampler,
+    mode: Literal["incremental", "cumulative"],
+    target_index: pd.Index,
+) -> pd.Series:
+    """Compute bar volume from tick volume series with well-defined semantics."""
+    if "volume" not in df.columns:
+        return pd.Series(0.0, index=target_index)
+    if mode == "cumulative":
+        v_last = resampled["volume"].last()
+        v_first = resampled["volume"].first()
+        out = (pd.to_numeric(v_last, errors="coerce").fillna(0.0) - pd.to_numeric(v_first, errors="coerce").fillna(0.0)).clip(lower=0.0)
+        return out.reindex(target_index).fillna(0.0)
+    # incremental
+    out = pd.to_numeric(resampled["volume"].sum(), errors="coerce").fillna(0.0)
+    return out.reindex(target_index).fillna(0.0)
+
+
 def build_ohlcv(
     ticks_df: pd.DataFrame,
     bar_size: str,
     price_col: str = "ltp",
     volume_agg: Literal["max", "sum", "last", "first"] = DEFAULT_VOLUME_AGG,
     oi_agg: Literal["max", "sum", "last", "first"] = DEFAULT_OI_AGG,
+    volume_mode: Literal["incremental", "cumulative"] = "incremental",
 ) -> pd.DataFrame:
     """
     Build OHLCV bars from tick data.
@@ -71,20 +91,8 @@ def build_ohlcv(
     ohlc = resampled[price_col].ohlc()
     
     # Aggregate volume and OI
-    volume_data = None
-    if "volume" in df.columns:
-        if volume_agg == "max":
-            volume_data = resampled["volume"].max()
-        elif volume_agg == "sum":
-            volume_data = resampled["volume"].sum()
-        elif volume_agg == "last":
-            volume_data = resampled["volume"].last()
-        elif volume_agg == "first":
-            volume_data = resampled["volume"].first()
-        else:
-            volume_data = resampled["volume"].max()
-    else:
-        volume_data = pd.Series(0, index=ohlc.index)
+    # NOTE: volume_agg is legacy; volume_mode defines semantics and is what the engine uses.
+    volume_data = _bar_volume(df, resampled, mode=volume_mode, target_index=ohlc.index)
     
     oi_data = None
     if "oi" in df.columns:
@@ -118,6 +126,8 @@ def build_ohlcv(
 def build_option_asof_snapshot(
     ticks_df: pd.DataFrame,
     bar_ts_index: pd.DatetimeIndex,
+    bar_size: str,
+    volume_mode: Literal["incremental", "cumulative"] = "incremental",
 ) -> pd.DataFrame:
     """
     Build option chain snapshot at each bar timestamp using as-of semantics.
@@ -143,7 +153,7 @@ def build_option_asof_snapshot(
         ...     "ask": [...],
         ... })
         >>> bar_ts = pd.date_range("2025-10-01 09:15:15", periods=10, freq="15s", tz="UTC")
-        >>> chain = build_option_asof_snapshot(ticks, bar_ts)
+        >>> chain = build_option_asof_snapshot(ticks, bar_ts, bar_size="15s")
     """
     if ticks_df.empty:
         return pd.DataFrame(
@@ -214,6 +224,24 @@ def build_option_asof_snapshot(
         merged = merged[merged["symbol"].notna()]
         if merged.empty:
             continue
+
+        # Replace carried-forward volume with per-bar volume.
+        # This is critical for liquidity filters and strategy features.
+        if "volume" in symbol_ticks.columns:
+            vdf = symbol_ticks[["ts", "volume"]].copy()
+            vdf["ts"] = pd.to_datetime(vdf["ts"], utc=True)
+            vdf = vdf.set_index("ts").sort_index()
+            r = vdf.resample(bar_size, label="right", closed="right")
+            if volume_mode == "cumulative":
+                vbar = (r["volume"].last().fillna(0.0) - r["volume"].first().fillna(0.0)).clip(lower=0.0)
+            else:
+                vbar = r["volume"].sum().fillna(0.0)
+            vbar = vbar.rename("volume_bar").reset_index().rename(columns={"ts": "timestamp"})
+            merged = merged.merge(vbar, on="timestamp", how="left")
+            if "volume_bar" in merged.columns:
+                merged["volume"] = merged["volume_bar"].fillna(0.0)
+                merged = merged.drop(columns=["volume_bar"])
+
         parsed = symbol_map.loc[symbol]
         merged["symbol"] = symbol
         merged["expiry"] = parsed["expiry"]

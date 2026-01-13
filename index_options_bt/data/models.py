@@ -22,6 +22,9 @@ class MarketSnapshot:
     spot_bar: Optional[pd.DataFrame] = None  # OHLCV bar for index (columns: open, high, low, close, volume, oi)
     futures_bar: Optional[pd.DataFrame] = None  # OHLCV bar for futures (optional)
     options_chain: Optional[pd.DataFrame] = None  # Chain snapshot with columns: timestamp, symbol, expiry, strike, cp, bid, ask, last, iv, delta, gamma, theta, vega, volume, oi
+    # Optional: raw option ticks for the *session* (UTC), to support window-based strategies.
+    # Provider may attach a shared DataFrame reference for efficiency; strategies should not mutate it.
+    options_ticks: Optional[pd.DataFrame] = None
     
     def has_spot(self) -> bool:
         """Check if spot bar is available"""

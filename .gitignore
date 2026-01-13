@@ -81,3 +81,22 @@ compare_trades_ist.py
 export_new_backtest.py
 prepare_export.py
 read_corrections.py
+
+# Test folders and files
+tests/
+test_*.py
+*_test.py
+
+# Example folders and files
+examples/
+example_*.py
+
+# Run outputs (backtest results)
+runs/
+apps/runs/
+
+# Pytest cache
+.pytest_cache/
+
+# Data folder (contains large database files)
+data/
