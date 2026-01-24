@@ -38,6 +38,18 @@ except ImportError:
     # Strategy not implemented yet
     pass
 
+try:
+    from .oi_momentum import OIMomentumStrategy
+except ImportError:
+    # Strategy not implemented yet
+    pass
+
+try:
+    from .institutional_flow_momentum import InstitutionalFlowMomentumStrategy
+except ImportError:
+    # Strategy not implemented yet
+    pass
+
 # Export registry functions
 from .registry import (
     register_strategy,

@@ -1,0 +1,117 @@
+# NIFTY Institutional Flow + Momentum Capture (5s Engine) - Configuration
+#
+# Notes:
+# - Strategy is BUY-only and LTP-only.
+# - OI/Greeks are treated defensively (may be missing/zero). If you want strict behavior, keep
+#   require_oi_confirmation=true and require_greeks=false/true depending on your DB coverage.
+
+strategy:
+  name: institutional_flow_momentum
+  params:
+    # Time windows in IST (strategy converts snapshot UTC -> IST)
+    timezone: "Asia/Kolkata"
+    allowed_windows_ist:
+      - ["09:25", "11:30"]
+      - ["13:45", "14:45"]
+
+    # Futures direction engine
+    vwap_window_minutes: 15.0
+    ema_fast_period: 20      # 1H EMA20
+    ema_slow_period: 50      # 1H EMA50
+    vwap_reentry_band_pct: 0.05  # optional exit when futures comes back to VWAP band (pct)
+
+    # Option universe window (ATM±N)
+    strike_step: 50
+    atm_window_steps: 2     # ATM, ATM±50, ATM±100
+    nearest_expiry_only: true
+
+    # OI/Premium confirmation (5m deltas)
+    delta_window_minutes: 5.0
+    min_oi_change_pct: 1.5
+    min_premium_change_pct: 1.0
+    require_oi_confirmation: true
+    require_volume_confirmation: false
+    min_volume_change_pct: 0.0
+    opposite_weak_threshold_pct: 0.5
+
+    # Greeks stability (optional; set require_greeks=true only if your data is reliable)
+    require_greeks: false
+    target_delta: 0.55
+    delta_min: 0.45
+    delta_max: 0.65
+    gamma_min: 0.001
+    theta_accel_max_abs: 0.15
+    iv_change_max_pct: 8.0
+
+    # Entry momentum proxy (replaces bid/ask imbalance)
+    use_aggressive_proxy: true
+    min_opt_impulse_pct_5s: 0.25
+    min_fut_impulse_pct_5s: 0.01
+
+    # Risk/targets (percent on option premium)
+    contracts: 1
+    stop_loss_pct: 25.0
+    r_multiple_t1: 1.5
+    r_multiple_t2: 3.0
+    tp1_fraction: 0.5
+    max_hold_minutes: 8.0
+
+# Contract selector (aligns with strategy's candidate selection)
+selector:
+  mode: "delta"
+  expiry_preference: "nearest"
+  contract_multiplier: 75
+  target_delta: 0.55
+  strike_window:
+    kind: "count"
+    value: 2          # ±2 strikes around spot (≈ ATM±100 for NIFTY step=50)
+  liquidity:
+    min_bid: 0.0
+    max_spread_pct: 1.0
+    min_oi: 0
+    min_volume: 0
+
+engine:
+  start: "2025-09-01T09:15:00+05:30"
+  end: "2025-09-01T15:30:00+05:30"
+  bar_size: "5s"
+  timezone: "Asia/Kolkata"
+
+data:
+  provider: "sqlite"
+  sqlite_path: "G:/Projects/Centralize Data Centre/data/nifty_local.db"
+  table: "ltp_ticks"
+  symbol_index: "NIFTY 50"
+  volume_mode: "incremental"
+  preload_ticks: true
+
+execution:
+  fill_on: "ltp"
+  apply_slippage: true
+  slippage_bps: 20
+  tp_sl_apply_slippage: true
+
+risk:
+  max_open_positions: 1
+  max_daily_trades: 10
+  max_daily_loss_pct: 5.0
+  cooldown_after_loss_seconds: 300
+
+portfolio:
+  initial_cash: 100000.0
+  lot_size: 75
+
+logging:
+  level: "INFO"
+  file: "logs/institutional_flow_momentum.log"
+
+reporting:
+  save_csv: true
+  save_plot: false
+  save_log: true
+
+output:
+  format: "both"
+  directory: "runs/"
+
+
